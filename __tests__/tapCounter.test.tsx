@@ -18,6 +18,16 @@ function flushMicrotasks(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
+// The AsyncStorage jest mock exposes persistent jest.fn()s for its methods
+// that are shared across every test in this file. jest.spyOn on an
+// already-mocked function does not reset that shared call history, so
+// without an explicit clear, later tests would see call counts left over
+// from earlier ones. Clearing mock call history (not stored data) before
+// every test keeps each test's assertions scoped to its own behavior.
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
 describe('counterStorage', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -122,6 +132,13 @@ describe('useTapCounter', () => {
   it('does not write to storage before hydration completes', async () => {
     const getItemSpy = jest.spyOn(AsyncStorage, 'getItem');
     const setItemSpy = jest.spyOn(AsyncStorage, 'setItem');
+    // Belt-and-suspenders: even though the file-level beforeEach already
+    // clears all mock call history before this test starts, explicitly
+    // clear these two spies right before the action under test so this
+    // assertion can never be influenced by anything that happened earlier
+    // in this same test (e.g. spy creation) or in prior tests.
+    getItemSpy.mockClear();
+    setItemSpy.mockClear();
 
     await mountHarness();
 
