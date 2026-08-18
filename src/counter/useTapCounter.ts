@@ -46,7 +46,10 @@ export function useTapCounter(): UseTapCounterResult {
     if (!hydrated) {
       return;
     }
-    saveCount(count);
+    // Local persistence is best-effort: a failed write must not crash the
+    // app or surface as an unhandled promise rejection. The in-memory count
+    // keeps working regardless; the next successful write catches up.
+    saveCount(count).catch(() => {});
   }, [count, hydrated]);
 
   const increment = useCallback(() => {
