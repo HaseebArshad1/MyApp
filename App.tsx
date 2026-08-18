@@ -8,6 +8,7 @@
 import React from 'react';
 import type {PropsWithChildren} from 'react';
 import {
+  Button,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -24,6 +25,8 @@ import {
   LearnMoreLinks,
   ReloadInstructions,
 } from 'react-native/Libraries/NewAppScreen';
+
+import {useTapCounter} from './src/counter/useTapCounter';
 
 type SectionProps = PropsWithChildren<{
   title: string;
@@ -55,6 +58,34 @@ function Section({children, title}: SectionProps): React.JSX.Element {
   );
 }
 
+function TapCounter(): React.JSX.Element {
+  const isDarkMode = useColorScheme() === 'dark';
+  const {count, increment, reset} = useTapCounter();
+
+  return (
+    <View style={styles.counterContainer}>
+      <Text
+        testID="counter-value"
+        style={[
+          styles.counterValue,
+          {
+            color: isDarkMode ? Colors.white : Colors.black,
+          },
+        ]}>
+        {count}
+      </Text>
+      <View style={styles.counterButtonRow}>
+        <View style={styles.counterButton} testID="increment-button">
+          <Button title="Increment" onPress={increment} />
+        </View>
+        <View style={styles.counterButton} testID="reset-button">
+          <Button title="Reset" onPress={reset} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
 
@@ -76,6 +107,7 @@ function App(): React.JSX.Element {
           style={{
             backgroundColor: isDarkMode ? Colors.black : Colors.white,
           }}>
+          <TapCounter />
           <Section title="Step One">
             Edit <Text style={styles.highlight}>App.tsx</Text> to change this
             screen and then come back to see your edits.
@@ -112,6 +144,22 @@ const styles = StyleSheet.create({
   },
   highlight: {
     fontWeight: '700',
+  },
+  counterContainer: {
+    marginTop: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  counterValue: {
+    fontSize: 48,
+    fontWeight: '700',
+  },
+  counterButtonRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  counterButton: {
+    marginHorizontal: 8,
   },
 });
 
