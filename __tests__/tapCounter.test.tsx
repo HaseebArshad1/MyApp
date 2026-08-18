@@ -130,26 +130,43 @@ describe('useTapCounter', () => {
   });
 
   it('does not write to storage before hydration completes', async () => {
-    const getItemSpy = jest.spyOn(AsyncStorage, 'getItem');
-    const setItemSpy = jest.spyOn(AsyncStorage, 'setItem');
-    // Belt-and-suspenders: even though the file-level beforeEach already
-    // clears all mock call history before this test starts, explicitly
-    // clear these two spies right before the action under test so this
-    // assertion can never be influenced by anything that happened earlier
-    // in this same test (e.g. spy creation) or in prior tests.
-    getItemSpy.mockClear();
-    setItemSpy.mockClear();
-
-    await mountHarness();
-
-    expect(getItemSpy).toHaveBeenCalledTimes(1);
-    const getItemOrder = getItemSpy.mock.invocationCallOrder[0];
-    if (setItemSpy.mock.invocationCallOrder.length > 0) {
-      expect(setItemSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
-        getItemOrder,
+    // Hold the initial getItem() read pending so we can observe exactly
+    // what happens *before* hydration resolves, not just the eventual
+    // ordering of calls. If the `hydrated` guard were ever removed, the
+    // persist effect would call setItem(0) synchronously on mount, long
+    // before this deferred getItem() promise resolves — this test fails
+    // in that case.
+    let resolveGetItem: (value: string | null) => void = () => {};
+    const getItemSpy = jest
+      .spyOn(AsyncStorage, 'getItem')
+      .mockImplementation(
+        () =>
+          new Promise<string | null>(resolve => {
+            resolveGetItem = resolve;
+          }),
       );
-    }
+    const setItemSpy = jest.spyOn(AsyncStorage, 'setItem');
 
+    let renderer: ReturnType<typeof create> | undefined;
+    act(() => {
+      renderer = create(<Harness onChange={() => {}} />);
+    });
+
+    // Hydration has started (getItem was called) but has not resolved yet:
+    // nothing should have been written to storage.
+    expect(getItemSpy).toHaveBeenCalledTimes(1);
+    expect(setItemSpy).not.toHaveBeenCalled();
+
+    // Resolve the pending read and let hydration complete.
+    await act(async () => {
+      resolveGetItem(null);
+      await flushMicrotasks();
+    });
+
+    // Only once hydration has completed does the persist effect run.
+    expect(setItemSpy).toHaveBeenCalled();
+
+    renderer?.unmount();
     getItemSpy.mockRestore();
     setItemSpy.mockRestore();
   });
