@@ -3,7 +3,14 @@
  */
 
 import React from 'react';
-import {beforeEach, describe, expect, it, jest} from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
 import renderer, {act} from 'react-test-renderer';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -44,27 +51,43 @@ describe('counterStorage', () => {
 
 describe('useTapCounter', () => {
   let latest: UseTapCounterResult;
+  let currentRenderer: ReturnType<typeof renderer.create> | null = null;
 
   function Harness() {
     latest = useTapCounter();
     return null;
   }
 
-  it('starts at 0 and hydrates when nothing is stored', async () => {
+  // Mounts a fresh Harness and waits for its hydration effect to settle.
+  // `currentRenderer` is always torn down in `afterEach` below so no
+  // component (and no pending effect) from one test is ever still alive
+  // when the next test starts.
+  async function mountHarness(): Promise<void> {
     await act(async () => {
-      renderer.create(<Harness />);
+      currentRenderer = renderer.create(<Harness />);
       await flush();
     });
+  }
+
+  afterEach(() => {
+    if (currentRenderer) {
+      const toUnmount = currentRenderer;
+      currentRenderer = null;
+      act(() => {
+        toUnmount.unmount();
+      });
+    }
+  });
+
+  it('starts at 0 and hydrates when nothing is stored', async () => {
+    await mountHarness();
 
     expect(latest.count).toBe(0);
     expect(latest.hydrated).toBe(true);
   });
 
   it('increments by exactly one per call', async () => {
-    await act(async () => {
-      renderer.create(<Harness />);
-      await flush();
-    });
+    await mountHarness();
 
     act(() => {
       latest.increment();
@@ -74,10 +97,7 @@ describe('useTapCounter', () => {
   });
 
   it('does not drop or double-count rapid increments', async () => {
-    await act(async () => {
-      renderer.create(<Harness />);
-      await flush();
-    });
+    await mountHarness();
 
     const taps = 20;
     act(() => {
@@ -90,10 +110,7 @@ describe('useTapCounter', () => {
   });
 
   it('resets the count to 0 after incrementing', async () => {
-    await act(async () => {
-      renderer.create(<Harness />);
-      await flush();
-    });
+    await mountHarness();
 
     act(() => {
       latest.increment();
@@ -110,27 +127,39 @@ describe('useTapCounter', () => {
   it('hydrates from a pre-seeded stored value instead of 0', async () => {
     await saveCount(5);
 
-    await act(async () => {
-      renderer.create(<Harness />);
-      await flush();
-    });
+    await mountHarness();
 
     expect(latest.count).toBe(5);
   });
 
-  it('does not write to storage before hydration completes', async () => {
+  it('reads storage before it ever writes, and writes nothing before hydration completes', async () => {
+    const getItemSpy = jest.spyOn(AsyncStorage, 'getItem');
     const setItemSpy = jest.spyOn(AsyncStorage, 'setItem');
 
     act(() => {
-      renderer.create(<Harness />);
+      currentRenderer = renderer.create(<Harness />);
     });
 
+    // The hydration `getItem` call is in flight but its promise has not
+    // resolved yet, so nothing should have been persisted synchronously.
     expect(setItemSpy).not.toHaveBeenCalled();
 
     await act(async () => {
       await flush();
     });
 
+    // Hydration has now completed and persisted the (still-0) count, but
+    // only *after* reading the existing value first. Asserting relative
+    // call order (rather than an absolute call count) keeps this
+    // assertion meaningful and immune to how many times AsyncStorage was
+    // touched by any other test.
+    expect(getItemSpy).toHaveBeenCalled();
+    expect(setItemSpy).toHaveBeenCalled();
+    expect(getItemSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      setItemSpy.mock.invocationCallOrder[0],
+    );
+
+    getItemSpy.mockRestore();
     setItemSpy.mockRestore();
   });
 });
