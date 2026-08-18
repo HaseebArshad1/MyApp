@@ -19,7 +19,7 @@ export async function loadCount(): Promise<number> {
     }
     const parsed = parseInt(stored, 10);
     return Number.isNaN(parsed) ? 0 : parsed;
-  } catch (error) {
+  } catch {
     return 0;
   }
 }
