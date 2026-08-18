@@ -10,8 +10,16 @@ import App from '../App';
 import {it} from '@jest/globals';
 
 // Note: test renderer must be required after react-native.
-import renderer from 'react-test-renderer';
+import renderer, {act} from 'react-test-renderer';
 
-it('renders correctly', () => {
-  renderer.create(<App />);
+// App now mounts the tap counter, which hydrates from storage
+// asynchronously; flush that effect inside act() so the render is
+// fully settled (and React doesn't warn about updates outside act()).
+const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+it('renders correctly', async () => {
+  await act(async () => {
+    renderer.create(<App />);
+    await flush();
+  });
 });
